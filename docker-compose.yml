@@ -1,0 +1,154 @@
+version: '3'
+services:
+  mono_db:
+    image: postgres
+    restart: unless-stopped
+    shm_size: 128mb
+    environment:
+      POSTGRES_DB: bootcamp_db
+      POSTGRES_USER: dvpsqluser
+      POSTGRES_PASSWORD: dvpsql 
+    expose:
+      - "5434"
+    ports:
+      - "5434:5434"
+    command: -p 5434
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+    - db_net_admin
+    - db_net_2
+    - db_net_1
+  adminer:
+    image: adminer
+    restart: unless-stopped
+    ports:
+      - 5454:5454
+    networks:
+      - db_net_admin
+  zookeeper:
+    image: wurstmeister/zookeeper
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    restart: unless-stopped
+    networks:
+      - kafka_net
+  kafka1:
+    image: wurstmeister/kafka:latest
+    ports:
+      - "9092:9092"
+    expose:
+      - "9093"
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://kafka1:9093,OUTSIDE://kafka1:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_LISTENERS: INSIDE://0.0.0.0:9093,OUTSIDE://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_BROKER_ID: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_CREATE_TOPICS: "data-topic:3:1, trigger-topic:2:1"
+    depends_on:
+      - zookeeper
+    restart: unless-stopped
+    networks:
+      - service_net
+      - kafka_net
+  kafka2:
+    image: wurstmeister/kafka:latest
+    ports:
+      - "9094:9094"
+    expose:
+      - "9095"
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://kafka2:9095,OUTSIDE://kafka2:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_LISTENERS: INSIDE://0.0.0.0:9095,OUTSIDE://0.0.0.0:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+      KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_BROKER_ID: 2
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_CREATE_TOPICS: "data-topic:3:1, trigger-topic:2:1"
+    depends_on:
+      - zookeeper
+    restart: unless-stopped
+    networks:
+      - service_net
+      - kafka_net
+  hrs1:
+    build:
+      context: ./BootcampProjHrs/
+      dockerfile: ./dockerfile
+    networks:
+      - db_net_1
+      - service_net
+    ports: 
+      - "9997:8082"
+    restart: unless-stopped
+    depends_on:
+      - mono_db
+      - kafka1
+      - kafka2
+  hrs2:
+    build:
+      context: ./BootcampProjHrs/
+      dockerfile: ./dockerfile
+    networks:
+      - db_net_1
+      - service_net
+    ports: 
+      - "9998:8082"
+    restart: unless-stopped
+    depends_on:
+      - mono_db
+      - kafka1
+      - kafka2
+  brt:
+    build:
+      context: ./BootcampProjBrt/
+      dockerfile: ./dockerfile
+    networks:
+      - db_net_1
+      - service_net
+      - kafka_net
+    restart: unless-stopped
+    depends_on:
+      - hrs1
+      - hrs2
+  cdr:
+    build:
+      context: ./BootcampProjCdrGen/
+      dockerfile: ./dockerfile
+    networks:
+      - db_net_2
+      - kafka_net
+    restart: unless-stopped
+    depends_on:
+      - nginx_hrs
+  nginx_hrs:
+    image: nginx:latest
+    restart: unless-stopped
+    ports:
+      - "9999:9999"
+    volumes:
+      - ./nginx_hrs.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - hrs1
+      - hrs2
+    networks:
+    - db_net_1
+    - service_net
+networks:
+  db_net_1:
+    driver: bridge
+  db_net_2:
+    driver: bridge
+  db_net_admin:
+    driver: bridge
+  service_net:
+    driver: bridge
+  kafka_net:
+    driver: bridge
+    
+    
