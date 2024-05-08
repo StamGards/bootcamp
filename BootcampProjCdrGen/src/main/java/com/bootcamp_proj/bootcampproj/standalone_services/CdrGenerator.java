@@ -1,28 +1,26 @@
 package com.bootcamp_proj.bootcampproj.standalone_services;
 import com.bootcamp_proj.bootcampproj.additional_classes.AbonentHolder;
 import com.bootcamp_proj.bootcampproj.additional_classes.ConcurentRecordHolder;
-import com.bootcamp_proj.bootcampproj.psql_brt_abonents.BrtAbonentsService;
 import com.bootcamp_proj.bootcampproj.psql_cdr_abonents.CdrAbonents;
 import com.bootcamp_proj.bootcampproj.psql_cdr_abonents.CdrAbonentsService;
 import com.bootcamp_proj.bootcampproj.psql_transactions.Transaction;
 import com.bootcamp_proj.bootcampproj.psql_transactions.TransactionService;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.annotation.TopicPartition;
+import org.springframework.http.*;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.stereotype.Service;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestTemplate;
 
-import java.io.BufferedWriter;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.logging.Logger;
 
 @Service
 @EnableAsync
@@ -31,13 +29,31 @@ public class CdrGenerator implements InitializingBean {
     private static final String IN_CALL_TYPE_CODE = "02";
     private static final int DELAY = 300;
     private static final double CALL_CHANCE = 0.7;
+    private static final double CRM_CHANCE = 0.07;
     private static final double CALL_CHANCE_EQUATOR = 1 - (1 - CALL_CHANCE) / 2;
     private static final String TEMP_CDR_TXT = "./usr/local/temp/CDR.txt";
+    private static final String CDR_ABONENTS_TXT = "./usr/local/temp/CrmAbonents.txt";
     private static final String DATA_TOPIC = "data-topic";
     private static final int PART_ZERO_INT = 0;
-    private static Random random = new Random();
+    private static final String URL_START = "http://nginx_crm:9989/abonents/";
+    private static final String URL_PAY = "/pay?value=";
+    private static final String URL_LIST = "list";
+    private static final String CREATE_URL = "create/";
+    private static final String TARIFF_ID_URL = "?tariff-id=";
+    private static final String CHANGE_TARIFF_URL = "/change-tariff";
+    private static final String URL_BREAK = "/";
+    private static final String AUTH_HEADER = "Authorization";
+    private static final String COLON = ":";
+    private static final String DEFAULT_AUTH = "admin:admin";
+    private static int aFCMarker = 10;
+
     private static LinkedList<AbonentHolder> abonents;
+    private static LinkedList<String> abonentsForCrm;
     private static ConcurentRecordHolder records;
+    private static final Logger logger = Logger.getLogger(CdrGenerator.class.getName());
+    private static final RestTemplate restTemplate = new RestTemplate();
+    private static final Random random = new Random();
+
 
     @Autowired
     private CdrAbonentsService cdrAbonentsService;
@@ -45,10 +61,7 @@ public class CdrGenerator implements InitializingBean {
     private TransactionService transactionService;
     @Autowired
     private KafkaTemplate<String, String> kafkaTemplate;
-
     private static CdrGenerator instance = null;
-    @Autowired
-    private BrtAbonentsService brtAbonentsService;
 
     @Override
     public void afterPropertiesSet() throws Exception {
@@ -59,28 +72,21 @@ public class CdrGenerator implements InitializingBean {
         return instance;
     }
 
-    /*
-    @KafkaListener(topics = DATA_TOPIC, groupId = BOOTCAMP_PROJ_GROUP, topicPartitions = {
-            @TopicPartition(topic = TRIGGER_TOPIC, partitions = PART_ZERO)
-    })
-    private void consumeFromTriggerTopic(String message) {
-        System.out.println("CDR-T-P0 from START: " + message);
-        if (message.equals("cdr_start")) {
-            try {
-                switchEmulator();
-            } catch (IOException | InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }
-    }
-    */
-
-    private LinkedList<AbonentHolder> sqlSelectPhoneNumbers(int unixStart) {
-        LinkedList<AbonentHolder> target = new LinkedList<>();
+    private void sqlSelectPhoneNumbers(int unixStart) {
+        abonents = new LinkedList<>();
         Iterator<CdrAbonents> source = cdrAbonentsService.findAll().iterator();
-        source.forEachRemaining((i) -> target.add(new AbonentHolder(i.getMsisdn(), unixStart - 10)));
+        source.forEachRemaining((i) -> abonents.add(new AbonentHolder(i.getMsisdn(), unixStart - 10)));
 
-        return target;
+        abonentsForCrm = new LinkedList<>();
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(CDR_ABONENTS_TXT))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                abonentsForCrm.add(line);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public void switchEmulator() throws InterruptedException, IOException {
@@ -89,14 +95,13 @@ public class CdrGenerator implements InitializingBean {
 
         transactionService.trunkTable();
 
-        abonents = sqlSelectPhoneNumbers(unixStart);
-        records = new ConcurentRecordHolder();
+        sqlSelectPhoneNumbers(unixStart);
 
-        double dur;
+        records = new ConcurentRecordHolder();
 
         while (unixStart <= unixFinish) {
             Thread.sleep(DELAY);
-            dur = random.nextDouble();
+            double dur = random.nextDouble();
             if (dur  >= CALL_CHANCE) {
                 shuffle();
                 if (dur < CALL_CHANCE_EQUATOR) {
@@ -105,6 +110,8 @@ public class CdrGenerator implements InitializingBean {
                     generateCallRecord(unixStart, abonents.get(0), abonents.get(1));
                     generateCallRecord(unixStart, abonents.get(2), abonents.get(3));
                 }
+            } else if (dur <= CRM_CHANCE) {
+                generateCrmOperation();
             }
 
             checkLength();
@@ -123,7 +130,7 @@ public class CdrGenerator implements InitializingBean {
     }
 
     @Async
-    public void generateCallRecord(int unixCurr,
+    protected void generateCallRecord(int unixCurr,
                                    AbonentHolder msisdn1,
                                    AbonentHolder msisdn2) throws IOException, InterruptedException {
 
@@ -141,34 +148,23 @@ public class CdrGenerator implements InitializingBean {
             t2 = IN_CALL_TYPE_CODE;
         }
 
-        int lastCall = buildStandaloneRecord(t1, msisdn1.getMsisdn(), msisdn2.getMsisdn(), start, unixCurr);
+        buildStandaloneRecord(t1, msisdn1.getMsisdn(), msisdn2.getMsisdn(), start, unixCurr);
+        buildStandaloneRecord(t2, msisdn2.getMsisdn(), msisdn1.getMsisdn(), start, unixCurr);
 
-        checkLength();
-
-        if (brtAbonentsService.findInjection(msisdn2.getMsisdn())) {
-            buildStandaloneRecord(t2, msisdn2.getMsisdn(), msisdn1.getMsisdn(), start, unixCurr);
-        }
-
-        msisdn1.setUnixLastCall(lastCall);
-        msisdn2.setUnixLastCall(lastCall);
+        msisdn1.setUnixLastCall(unixCurr);
+        msisdn2.setUnixLastCall(unixCurr);
     }
 
-    private int buildStandaloneRecord(String type,
-                                       long m1,
-                                       long m2,
-                                       int start,
-                                       int end) {
+    private void buildStandaloneRecord(String type, long m1, long m2, int start, int end) {
 
         Transaction rec = new Transaction(m1, m2, type, start, end);
         transactionService.insertRecord(rec);
         records.add(rec.toString());
-        System.out.println("CDR: Добавлена новая запись " + records.getListLength() + "/10");
-
-        return rec.getUnixEnd();
+        logger.info("CDR: Добавлена новая запись " + records.getListLength() + "/10");
     }
 
     private void sendTransactionsData() throws IOException {
-        System.out.println("CDR: Достигнут предел");
+        logger.info("CDR: Достигнут предел");
 
         StringBuilder plainText = new StringBuilder();
 
@@ -192,5 +188,58 @@ public class CdrGenerator implements InitializingBean {
             sendTransactionsData();
             records.clear();
         }
+    }
+
+    @Async
+    protected void generateCrmOperation() {
+        int dur = random.nextInt(0, 4);
+        String url;
+        String randNum = abonentsForCrm.get(random.nextInt(10));
+
+        HttpMethod method = HttpMethod.GET;
+        String authParam = DEFAULT_AUTH;
+
+        switch (dur) {
+            case 0:
+                url = URL_START + URL_LIST;
+                break;
+            case 1:
+                url = URL_START + URL_LIST + URL_BREAK + randNum;
+                authParam = randNum + COLON;
+                break;
+            case 2:
+                url = URL_START + URL_LIST + URL_BREAK + randNum + URL_PAY + random.nextInt(100, 1000);
+                method = HttpMethod.POST;
+                authParam = randNum + COLON;
+                break;
+            case 3:
+                url = URL_START + randNum + CHANGE_TARIFF_URL + TARIFF_ID_URL + random.nextInt(11, 12);
+                method = HttpMethod.POST;
+                break;
+            case 4:
+                url = URL_START + CREATE_URL + randNum + TARIFF_ID_URL + random.nextInt(11, 12);
+                method = HttpMethod.POST;
+                randNum = abonentsForCrm.get(random.nextInt(aFCMarker++, abonentsForCrm.size() - 1));
+                break;
+            default:
+                url = URL_START + URL_LIST;
+                break;
+        }
+        logger.info("CDR: Sending URL To CRM: " + url);
+        try {
+            logger.info("CDR Response From CRM: " + sendRestToCrm(url, authParam, method));
+        } catch (Exception e) {
+            logger.warning("CDR Response From CRM - Not Correct Request: " + e.getMessage());
+        }
+    }
+
+    private ResponseEntity<String> sendRestToCrm(String url, String authParams, HttpMethod httpMethod) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(AUTH_HEADER, authParams);
+        HttpEntity<String> entity = new HttpEntity<>(headers);
+
+        ResponseEntity<String> response = restTemplate.exchange(url, httpMethod, entity, String.class);
+
+        return response;
     }
 }

@@ -25,7 +25,7 @@ import java.util.WeakHashMap;
 
 @RestController
 @Service
-@RequestMapping("/api/hrs-handler")
+@RequestMapping("/api/hrs")
 public class HrsHandler {
     private static final String IN_CALL_TYPE_CODE = "02";
     private static final int ZERO = 0;
@@ -44,7 +44,6 @@ public class HrsHandler {
     TariffStatsService tariffStatsService;
     @Autowired
     private UserMinutesService userMinutesService;
-
 
     @GetMapping("/single-pay")
     @ResponseStatus(HttpStatus.OK)
@@ -82,7 +81,7 @@ public class HrsHandler {
 
     private String tariffDispatch(String message) {
         HrsTransaction record = new HrsTransaction(message);
-        if (tariffStats.get(record.getTariffId()).getNum_of_minutes() == 0) {
+        if (tariffStats.get(record.getTariffId()).getPrice_of_period() == 0) {
             return noMinutesTariff(record, record.getTariffId());
         }
         return withMinutesTariff(record);
