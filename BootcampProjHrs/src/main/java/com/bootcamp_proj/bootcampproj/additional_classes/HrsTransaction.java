@@ -5,6 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 
+/**
+ * Наследник класс для обработки записей из CDR файла.
+ * Расширен полями и методами, необходимыми для работы внутри HRS
+ */
 public class HrsTransaction extends BrtTransaction {
 
     public HrsTransaction(String json) {

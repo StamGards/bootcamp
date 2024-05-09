@@ -2,6 +2,8 @@ package com.bootcamp_proj.bootcampproj.additional_classes;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+//TODO
+// 1. убрать этот класс нафик
 public class HrsCallbackRecord {
     private long msisdn;
     private double callCost;

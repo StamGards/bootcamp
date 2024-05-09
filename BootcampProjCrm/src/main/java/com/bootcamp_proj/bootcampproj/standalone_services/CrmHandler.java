@@ -10,6 +10,9 @@ import org.springframework.web.client.RestTemplate;
 
 import java.util.logging.Logger;
 
+/**
+ * CRM сервис, получает запрос от пользователя и определенным образом перенаправляет её на BRT
+ */
 @Service
 @EnableAsync
 @RequestMapping("/abonents")
@@ -88,6 +91,11 @@ public class CrmHandler {
         return new ResponseEntity<>(DENY, HttpStatus.UNAUTHORIZED);
     }
 
+    /**
+     * Метод проверяет что запрос пришёл от администратора
+     * @param auth Заголовок авторизации
+     * @return Положительный или отрицательный "булеан"
+     */
     private boolean checkAdminAuthorization(String auth) {
         //auth = decodeFromAuthHeader(auth);
         if (auth.equals(ADMIN)) {
@@ -97,6 +105,11 @@ public class CrmHandler {
         }
     }
 
+    /**
+     * Метод проверяет что запрос пришёл от абонента "Ромашки", путём запроса к BRT
+     * @param msisdn Заголовок авторизации
+     * @return Положительный или отрицательный "булеан"
+     */
     private boolean checkAbonentInBrt(String msisdn) {
         //msisdn = decodeFromAuthHeader(msisdn);
         String url = STARTER_URL + URL_BREAK + CHECK_CONTAINMENT + MSISDN_PARAM + extractSubstring(msisdn);
@@ -107,6 +120,12 @@ public class CrmHandler {
         return false;
     }
 
+    /**
+     * Отправка запроса на BRT
+     * @param url Адрес api
+     * @param httpMethod HTTP метод
+     * @return Положительный или отрицательный овтет от BRT
+     */
     private ResponseEntity<String> sendRequestToBrt(String url, HttpMethod httpMethod) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(CUSTOM_HEADER, CRM_SIGNATURE);
@@ -118,6 +137,11 @@ public class CrmHandler {
         return response;
     }
 
+    /**
+     * Метод избавляется от лишней служебной информации из заголовка, если она есть
+     * @param input Заголовок
+     * @return
+     */
     public static String extractSubstring(String input) {
         if (input == null || input.isEmpty()) {
             return null;

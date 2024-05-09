@@ -8,6 +8,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.lang.reflect.Array;
 
+/**
+ * Наследник класс для обработки записей из CDR файла. Расширен полями и методами,
+ * необходимыми для работы внутри BRT
+ */
 public class BrtTransaction extends Transaction {
     private static final String REGEX = ", ";
 
@@ -63,7 +67,7 @@ public class BrtTransaction extends Transaction {
         }
     }
 
-    public double getCallLength() {
+    public double countCallLength() {
         return unixEnd - unixStart;
     }
 }

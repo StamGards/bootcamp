@@ -70,10 +70,16 @@ public class BrtHandler {
     private static RestTemplate restTemplate = new RestTemplate();
     private static final Logger logger = Logger.getLogger(BrtHandler.class.getName());
 
+    /**
+     * Пост-конструктор для инициализации чувствительных объектов до начала работы сервиса.
+     * Стэк заполняется различными UNIX-time, которые соответствуют первым секундам каждого месяца 2023-го года.
+     * Верхний элемент стека не равен новому месяцу. Он нужен чтобы показать ежемесячную плату.
+     */
     @PostConstruct
     private void initializeMaps() {
         brtAbonentsMap = selectAllAbonents();
         monthlyTariffs = selectAllTariffs();
+        monthHolder = fillStack();
     }
 
     /**
@@ -81,20 +87,12 @@ public class BrtHandler {
      */
     @Autowired
     TariffStatsService tariffStatsService;
+
     /**
      * Контроллер для взаимодействия сервиса с таблицей абонентов "ромашки" базы данных BRT
      */
     @Autowired
     BrtAbonentsService brtAbonentsService;
-
-    /**
-     * Конструктор для заполнения стэка различными UNIX-time, которые соответствуют первым секундам каждого месяца 2023-го года.
-     * Верхний элемент стека не равен новому месяцу. Он нужен чтобы показать ежемесячную плату.
-     */
-    @PostConstruct
-    private void initializeStack() {
-        monthHolder = fillStack();
-    }
 
     /**
      * Метод "отлавливает" новые сообщения из кафка-топика "data-topic:0", куда CDR-генератор отправляет CDR-файлы
@@ -108,6 +106,12 @@ public class BrtHandler {
         cdrDataHandler(message);
     }
 
+    /**
+     * API для обработки запросов со стороны CRM по извлечению из БД информации по конкртеному абоненту
+     * @param msisdn Номер телефона
+     * @param head Заголовок с сигнатуорй источника
+     * @return Ответ с информаицей об абоненте или с информацией об ошибке
+     */
     @GetMapping("/list/{msisdn}")
     private ResponseEntity<String> returnCurrentAbonents(@PathVariable String msisdn, @RequestHeader(CUSTOM_HEADER) String head) {
         if (!checkSignature(head)) {
@@ -121,6 +125,13 @@ public class BrtHandler {
         return new ResponseEntity<>(NOT_FOUND, HttpStatus.NO_CONTENT);
     }
 
+    /**
+     * API для обработки запросов со стороны CRM по начислению средств на счёт абонента
+     * @param msisdn Номер телефона
+     * @param value Количество средств
+     * @param head Заголовок с сигнатуорй источника
+     * @return Ответ с информаицей об абоненте или с информацией об ошибке
+     */
     @PostMapping("/list/{msisdn}/pay")
     private ResponseEntity<String> proceedAbonentPayment(@PathVariable String msisdn, @RequestParam("value") String value, @RequestHeader(CUSTOM_HEADER) String head) {
         if (!checkSignature(head)) {
@@ -141,6 +152,15 @@ public class BrtHandler {
         return new ResponseEntity<>(NOT_FOUND, HttpStatus.NO_CONTENT);
     }
 
+    //TODO
+    //1. Указать начисление средств
+    /**
+     * API для обработки запросов со стороны CRM по регистрации абонента в сети оператора "Ромашка"
+     * @param msisdn Номер телефона
+     * @param tariffId Желаемый тариф
+     * @param head Заголовок с сигнатуорй источника
+     * @return Ответ с информаицей об абоненте или с информацией об ошибке
+     */
     @PostMapping("/create/{msisdn}")
     private ResponseEntity<String> managerCreateNewAbonent(@PathVariable String msisdn, @RequestParam("tariff-id") String tariffId, @RequestHeader(CUSTOM_HEADER) String head) {
         if (!checkSignature(head)) {
@@ -162,7 +182,14 @@ public class BrtHandler {
         return new ResponseEntity<>(INCORRECT_MSISDN, HttpStatus.BAD_REQUEST);
     }
 
-    @PostMapping("/{msisdn}/change-tariff")
+    /**
+     * API для обработки запросов со стороны CRM по смене тарифа существующего тарифа
+     * @param msisdn Номер телефона
+     * @param tariffId Новый тариф
+     * @param head Заголовок с сигнатуорй источника
+     * @return Ответ с информаицей об абоненте или с информацией об ошибке
+     */
+    @PutMapping("/{msisdn}/change-tariff")
     private ResponseEntity<String> managerUpdateAbonentTariff(@PathVariable String msisdn,
                                                               @RequestParam("tariff-id") String tariffId,
                                                               @RequestHeader(CUSTOM_HEADER) String head) {
@@ -203,6 +230,11 @@ public class BrtHandler {
         return new ResponseEntity<>(DENY, HttpStatus.UNAUTHORIZED);
     }
 
+    /**
+     * API для обработки запросов со стороны CRM по извлечению информации по всем абонентам
+     * @param head Номер телефона
+     * @return Ответ с информаицей об абонентах или с информацией об ошибке
+     */
     @GetMapping("/list")
     private ResponseEntity<String> returnAllAbonents(@RequestHeader(CUSTOM_HEADER) String head) {
         if (!checkSignature(head)) {
@@ -225,6 +257,12 @@ public class BrtHandler {
         }
     }
 
+    /**
+     * API для обработки запросов со стороны CRM по проверке абонента на нахождение его в БД оператора "Ромашки"
+     * @param msisdn Номер телефона
+     * @param head Заголовок с сигнатуорй источника
+     * @return Ответ с информаицей об абоненте или с информацией об ошибке
+     */
     @GetMapping("/check-containment")
     private ResponseEntity<String> checkContainment(@RequestParam("msisdn") String msisdn, @RequestHeader(CUSTOM_HEADER) String head) {
         if (checkAbonent(Long.parseLong(msisdn)) && checkSignature(head)) {
@@ -233,6 +271,11 @@ public class BrtHandler {
         return new ResponseEntity<>(DENY, HttpStatus.UNAUTHORIZED);
     }
 
+    /**
+     * Метод для проверки сигнатуры источника
+     * @param head Полученный заголовок
+     * @return Булеан по соответствию заголовка
+     */
     private boolean checkSignature(String head) {
         if (head != null) {
             if (head.equals(CRM_SIGNATURE)) {
