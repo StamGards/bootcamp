@@ -13,6 +13,7 @@ public class BootcampProjApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(BootcampProjApplication.class, args);
 
-		BrtHandler cdrGenerator = BrtHandler.getInstance();
+		BrtHandler brt = BrtHandler.getInstance();
+		brt.startWithExistingFile();
 	}
 }

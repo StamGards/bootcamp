@@ -41,38 +41,39 @@ public class BrtHandler implements InitializingBean {
     private static final String BOOTCAMP_PROJ_GROUP = "bootcamp-proj-group";
     private static final String DATA_TOPIC = "data-topic";
     private static final String PART_ZERO = "0";
-    private static final String CDR_FILE = ".usr/local/temp/CDR.txt";
-    private static final String MSISDN_REGEXP = "^7\\d{9,11}$";
+    private static final String CDR_FILE = "./usr/local/temp/CDR.txt";
     private static final String HOST = "http://nginx_hrs:";
-    private static final String PORT = "9999";
     private static final String SINGLE_PAY_PARAM = "/api/hrs/single-pay?param=";
     private static final String MONTHLY_PAY_PARAM = "/api/hrs/monthly-pay?param=";
     private static final String UPDATE_TARIFF_PARAM = "/api/hrs/change-tariff?param=";
-    private static final String CUSTOM_HEADER = "Custom-Header";
-    private static final String CRM_SIGNATURE = "CRM-Signature";
-    private static final String BRT_SIGNATURE = "BRT-Signature";
+    private static final String PORT = "9999";
     private static final String AUTHORIZED = "UserAuthorized";
     private static final String DENY = "AccessProhibited";
+    private static final String CUSTOM_HEADER = "Custom-Header";
+    private static final String CRM_SIGNATURE = "CRM-Signature";
     private static final String NOT_FOUND = "Data Not Found";
     private static final String PAYMENT_PROCEEDED = "Payment Proceeded";
     private static final String INCORRECT_VALUE = "Incorrect Money Value";
     private static final String INCORRECT_MSISDN = "Incorrect Msisdn";
+    private static final String MSISDN_REGEXP = "^7\\d{9,11}$";
     private static final String BAD_REQUEST = "Bad Request";
     private static final String ABONENT_NOT_FOUND = "Abonent Not Found";
     private static final String TARIFF_NOT_FOUND = "Tariff Not Found";
-    private static final String ALREADY_SET = "Already Set";
+    private static final String ALREADY_SET = "AlreadySet";
     private static final String ALREADY_REGISTRED = "Abonent Already Registred";
     private static final String SUCCESS = "Success";
     private static final String MONTH_UNIX_TIME_TXT = "./usr/local/temp/MonthUnixTime.txt";
     private static final String LOGS_PAYMENT_CORROSION = "./usr/local/logs/PaymentCorrosion.txt";
     private static final String LOGS_CDR_CORROSION = "./usr/local/logs/CDRCorrosion.txt";
+    private static final String BRT_SIGNATURE = "BRT-Signature";
 
-    private static Map<Long, BrtAbonents> brtAbonentsMap;
+    private static WeakHashMap<Long, BrtAbonents> brtAbonentsMap;
     private static LinkedList<String> monthlyTariffs;
     private static MonthStack monthHolder;
     private static final RestTemplate restTemplate = new RestTemplate();
     private static final Logger logger = Logger.getLogger(BrtHandler.class.getName());
     private static final Map<String, String> unhandledRecords = new HashMap<>();
+
 
     private static BrtHandler instance = null;
 
@@ -468,8 +469,8 @@ public class BrtHandler implements InitializingBean {
     /**
      * Метод извлекает всех абонентов из БД "ромашки"
      */
-    private Map<Long, BrtAbonents> selectAllAbonents() {
-        Map<Long, BrtAbonents> brtAbonentsMap = new HashMap<>();
+    private WeakHashMap<Long, BrtAbonents> selectAllAbonents() {
+        WeakHashMap<Long, BrtAbonents> brtAbonentsMap = new WeakHashMap<>();
 
         for (BrtAbonents elem : brtAbonentsService.findAll()) {
             brtAbonentsMap.put(elem.getMsisdn(), elem);
@@ -497,7 +498,7 @@ public class BrtHandler implements InitializingBean {
      * Метод для мануального запуска BRT-сервиса при помощи информации из файла
      */
 
-    private void startWithExistingFile() {
+    public void startWithExistingFile() {
         StringBuilder content = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(new FileReader(CDR_FILE))) {
             String line;
