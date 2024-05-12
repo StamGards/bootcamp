@@ -5,5 +5,7 @@ RUN mvn -f pom.xml clean package -DskipTests
 
 FROM openjdk:22
 COPY --from=build ../target/BootcampProj-0.0.1-SNAPSHOT.jar /usr/local/lib/demo.jar
+COPY ./logs /usr/local/logs
+COPY ./temp /usr/local/temp
 EXPOSE 8083
 ENTRYPOINT ["java","-jar","/usr/local/lib/demo.jar"]

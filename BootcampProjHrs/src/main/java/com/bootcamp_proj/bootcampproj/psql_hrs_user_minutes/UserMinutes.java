@@ -68,4 +68,8 @@ public class UserMinutes {
     public int getUsed_minutes_out() {
         return used_minutes_out;
     }
+
+    public void setTariff_id(String tariff_id) {
+        this.tariff_id = tariff_id;
+    }
 }

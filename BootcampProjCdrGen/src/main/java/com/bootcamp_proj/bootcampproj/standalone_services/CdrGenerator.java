@@ -1,26 +1,31 @@
 package com.bootcamp_proj.bootcampproj.standalone_services;
+
 import com.bootcamp_proj.bootcampproj.additional_classes.AbonentHolder;
 import com.bootcamp_proj.bootcampproj.additional_classes.ConcurentRecordHolder;
 import com.bootcamp_proj.bootcampproj.psql_cdr_abonents.CdrAbonents;
 import com.bootcamp_proj.bootcampproj.psql_cdr_abonents.CdrAbonentsService;
 import com.bootcamp_proj.bootcampproj.psql_transactions.Transaction;
 import com.bootcamp_proj.bootcampproj.psql_transactions.TransactionService;
-import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.*;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.stereotype.Service;
-import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.Random;
 import java.util.logging.Logger;
+import java.util.Base64;
 
 @Service
 @EnableAsync
@@ -35,7 +40,7 @@ public class CdrGenerator implements InitializingBean {
     private static final String CDR_ABONENTS_TXT = "./usr/local/temp/CrmAbonents.txt";
     private static final String DATA_TOPIC = "data-topic";
     private static final int PART_ZERO_INT = 0;
-    private static final String URL_START = "http://nginx_crm:9989/abonents/";
+    private static final String URL_START = "http://nginx_hrs:9989/abonents/";
     private static final String URL_PAY = "/pay?value=";
     private static final String URL_LIST = "list";
     private static final String CREATE_URL = "create/";
@@ -43,6 +48,7 @@ public class CdrGenerator implements InitializingBean {
     private static final String CHANGE_TARIFF_URL = "/change-tariff";
     private static final String URL_BREAK = "/";
     private static final String AUTH_HEADER = "Authorization";
+    private static final String BASIC = "Basic ";
     private static final String COLON = ":";
     private static final String DEFAULT_AUTH = "admin:admin";
     private static int aFCMarker = 10;
@@ -62,10 +68,6 @@ public class CdrGenerator implements InitializingBean {
     private KafkaTemplate<String, String> kafkaTemplate;
     private static CdrGenerator instance = null;
 
-    /**
-     * Костыль для запуска работы генератора звонков
-     * @throws Exception
-     */
     @Override
     public void afterPropertiesSet() throws Exception {
         instance = this;
@@ -75,13 +77,6 @@ public class CdrGenerator implements InitializingBean {
         return instance;
     }
 
-    /**
-     * Метод для получения всех номеров телефонов, для которых потребуется генерировать звонки.
-     * Здесь происходит заполнение списка номеров для генерации звонков, а также для генерации запросов к CRM.
-     * Так как CRM работает с абонентами "Ромашки", то мы должны указать генератору как номера, условно, из BRT, так и из CDR.
-     * Последнее нужно для регистрации новых пользователей в сети "Ромашки"
-     * @param unixStart Метка по умолчанию для указания времени последнего звонка, в начале это метка 01.01.23 00:00:01
-     */
     private void sqlSelectPhoneNumbers(int unixStart) {
         abonents = new LinkedList<>();
         Iterator<CdrAbonents> source = cdrAbonentsService.findAll().iterator();
@@ -95,15 +90,10 @@ public class CdrGenerator implements InitializingBean {
                 abonentsForCrm.add(line);
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            logger.warning(e.getMessage());
         }
     }
 
-    /**
-     * Основной метод генерации звонков
-     * @throws InterruptedException
-     * @throws IOException
-     */
     public void switchEmulator() throws InterruptedException, IOException {
         int unixStart = 1672531200;
         int unixFinish = 1704067199;
@@ -126,7 +116,7 @@ public class CdrGenerator implements InitializingBean {
                     generateCallRecord(unixStart, abonents.get(2), abonents.get(3));
                 }
             } else if (dur <= CRM_CHANCE) {
-                generateCrmOperation();
+                //generateCrmOperation();
             }
 
             checkLength();
@@ -135,10 +125,6 @@ public class CdrGenerator implements InitializingBean {
         }
     }
 
-    /**
-     * Метод перемешки списка абонентов CDR по алгоритму Кнута. Гарантированно мешаются лишь первый 4 абонента,
-     * так как генератор будет работать лишь с этими четырьмя позициями
-     */
     private void shuffle() {
         for (int i = 0; i < abonents.size() / 2; i++) {
             int index = random.nextInt(abonents.size() - 1);
@@ -148,17 +134,10 @@ public class CdrGenerator implements InitializingBean {
         }
     }
 
-    /**
-     * Метод для параллельной генерации звонков
-     * @param unixCurr Нынешнее время, будет браться как время конца звонка
-     * @param msisdn1 Абонент обсчёта
-     * @param msisdn2 Вспомогательный абонент
-     * @throws InterruptedException
-     */
     @Async
     protected void generateCallRecord(int unixCurr,
                                    AbonentHolder msisdn1,
-                                   AbonentHolder msisdn2) throws InterruptedException {
+                                   AbonentHolder msisdn2) throws IOException, InterruptedException {
 
         Thread.sleep(random.nextInt(0,300));
 
@@ -181,28 +160,16 @@ public class CdrGenerator implements InitializingBean {
         msisdn2.setUnixLastCall(unixCurr);
     }
 
-    /**
-     * Метод для создания записи о прошедшем звонке. Также метод сохраняет эту запись в кеш и в лог на стороне БД
-     * @param type Тип звонка (входящий/не входящий)
-     * @param m1 Абонент обсчёта
-     * @param m2 Вспомогательный абонент
-     * @param start Время начала звонка
-     * @param end Время конца звонка
-     */
     private void buildStandaloneRecord(String type, long m1, long m2, int start, int end) {
 
         Transaction rec = new Transaction(m1, m2, type, start, end);
         transactionService.insertRecord(rec);
         records.add(rec.toString());
-        logger.info("CDR: Добавлена новая запись " + records.getListLength() + "/10");
+        logger.info("CDR: New Record Added " + records.getListLength() + "/10");
     }
 
-    /**
-     * Метод для отправки CDR файла в топик Кафки
-     * @throws IOException
-     */
     private void sendTransactionsData() throws IOException {
-        logger.info("CDR: Достигнут предел");
+        logger.info("CDR: Limit Reached");
 
         StringBuilder plainText = new StringBuilder();
 
@@ -221,10 +188,6 @@ public class CdrGenerator implements InitializingBean {
         records.clear();
     }
 
-    /**
-     * Метод для проверки количества записей в кеше, если их 10, то CDR отправляется в Кафку, а кеш опустошается
-     * @throws IOException
-     */
     private void checkLength() throws IOException {
         if (records.getListLength() >= 10) {
             sendTransactionsData();
@@ -232,9 +195,6 @@ public class CdrGenerator implements InitializingBean {
         }
     }
 
-    /**
-     * Метод для генерации обращения к CRM
-     */
     @Async
     protected void generateCrmOperation() {
         int dur = random.nextInt(0, 4);
@@ -253,7 +213,7 @@ public class CdrGenerator implements InitializingBean {
                 authParam = randNum + COLON;
                 break;
             case 2:
-                url = URL_START + URL_LIST + URL_BREAK + randNum + URL_PAY + random.nextInt(100, 1000);
+                url = URL_START + randNum + URL_PAY + random.nextInt(100, 1000);
                 method = HttpMethod.POST;
                 authParam = randNum + COLON;
                 break;
@@ -278,20 +238,12 @@ public class CdrGenerator implements InitializingBean {
         }
     }
 
-    /**
-     * Метод для отправки запроса к CRM
-     * @param url Адрес вызываемой API
-     * @param authParams Параметры аутентификации
-     * @param httpMethod HTTP метод
-     * @return Положительный или отрицательный ответ на обращение, выводится в консоль
-     */
     private ResponseEntity<String> sendRestToCrm(String url, String authParams, HttpMethod httpMethod) {
         HttpHeaders headers = new HttpHeaders();
-        headers.add(AUTH_HEADER, authParams);
+        String encodedAuthParams = Base64.getEncoder().encodeToString(authParams.getBytes());
+        headers.add(AUTH_HEADER, BASIC + encodedAuthParams);
         HttpEntity<String> entity = new HttpEntity<>(headers);
 
-        ResponseEntity<String> response = restTemplate.exchange(url, httpMethod, entity, String.class);
-
-        return response;
+        return restTemplate.exchange(url, httpMethod, entity, String.class);
     }
 }

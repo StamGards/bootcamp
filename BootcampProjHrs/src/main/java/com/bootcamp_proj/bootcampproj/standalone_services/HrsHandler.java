@@ -1,18 +1,20 @@
 package com.bootcamp_proj.bootcampproj.standalone_services;
 
 
-import com.bootcamp_proj.bootcampproj.additional_classes.HrsCallbackRecord;
 import com.bootcamp_proj.bootcampproj.additional_classes.HrsTransaction;
 import com.bootcamp_proj.bootcampproj.psql_brt_abonents.BrtAbonentsService;
 import com.bootcamp_proj.bootcampproj.psql_hrs_user_minutes.UserMinutes;
 import com.bootcamp_proj.bootcampproj.psql_hrs_user_minutes.UserMinutesService;
 import com.bootcamp_proj.bootcampproj.psql_tariffs_stats.TariffStats;
 import com.bootcamp_proj.bootcampproj.psql_tariffs_stats.TariffStatsService;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
+import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.*;
 
@@ -22,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.logging.Logger;
 
 @RestController
 @Service
@@ -30,8 +33,14 @@ public class HrsHandler {
     private static final String IN_CALL_TYPE_CODE = "02";
     private static final int ZERO = 0;
     private static final String TARIFF_BY_DEFAULT = "11";
-    private WeakHashMap<String, TariffStats> tariffStats;
-    private Map<Long, UserMinutes> usersWithTariff = new HashMap<>();
+    public static final String INCORRECT_DATA = "Incorrect Data";
+    private static final String BRT_SIGNATURE = "BRT-Signature";
+    private static final String CUSTOM_HEADER = "Custom-Header";
+
+    private Map<String, TariffStats> tariffStats;
+    private WeakHashMap<Long, UserMinutes> usersWithTariff = new WeakHashMap<>();
+    private static final Logger logger = Logger.getLogger(HrsHandler.class.getName());
+
 
     @PostConstruct
     private void initializeMap() {
@@ -45,76 +54,106 @@ public class HrsHandler {
     @Autowired
     private UserMinutesService userMinutesService;
 
-    /**
-     * Api для обработки звонков
-     * @param param Информация о звонке
-     * @return Номер телфона и стоимость звонка
-     */
     @GetMapping("/single-pay")
-    @ResponseStatus(HttpStatus.OK)
-    public String singlePay(@RequestParam String param) {
-        return tariffDispatch(decodeParam(param));
+    public ResponseEntity<String> singlePay(@RequestParam String param, @RequestHeader(CUSTOM_HEADER) String head) {
+        if (checkSignature(head)) {
+            return tariffDispatch(decodeParam(param));
+        } else {
+            return new ResponseEntity<>(HttpStatus.UNAUTHORIZED);
+        }
     }
 
-    /**
-     * Api для обработки ежемесячных списаний
-     * @param param Информация об абоненте
-     * @return Номер телефона и стоимость звока
-     */
     @GetMapping("/monthly-pay")
-    @ResponseStatus(HttpStatus.OK)
-    public String monthlyPay(@RequestParam String param) {
-        return payDay(decodeParam(param));
+    public ResponseEntity<String> monthlyPay(@RequestParam String param, @RequestHeader(CUSTOM_HEADER) String head) {
+        if (checkSignature(head)) {
+            return payDay(decodeParam(param));
+        } else {
+            return new ResponseEntity<>(HttpStatus.UNAUTHORIZED);
+        }
     }
 
-    /**
-     * Метод для конкретной обработки ежемесячных списаний
-     * @param param Информация об абоненте
-     * @return Номер телефона и стоимость звонка
-     */
-    private String payDay(String param) {
+    @PutMapping("/change-tariff")
+    public ResponseEntity<String> changeTariff(@RequestParam String param, @RequestHeader(CUSTOM_HEADER) String head) {
+        if (checkSignature(head)) {
+            return updateLocalTariff(decodeParam(param));
+        } else {
+            return new ResponseEntity<>(HttpStatus.UNAUTHORIZED);
+        }
+    }
+
+    private ResponseEntity<String> updateLocalTariff(String param) {
+        ObjectMapper objectMapper = new ObjectMapper();
+        JsonNode jsonNode = null;
+        long msisdn;
+        String tariff;
+        try {
+            jsonNode = objectMapper.readTree(param);
+            msisdn = jsonNode.get("msisdn").asLong();
+            tariff = jsonNode.get("tariff_id").asText();
+        } catch (JsonProcessingException e) {
+            return new ResponseEntity<>(INCORRECT_DATA, HttpStatus.BAD_REQUEST);
+        }
+
+        UserMinutes user = checkUserContainment(msisdn, tariff);
+
+        TariffStats tS = tariffStats.get(tariff);
+
+        if (user == null) {
+            user = new UserMinutes(msisdn, tariff, 0, 0);
+            usersWithTariff.put(user.getMsisdn(), user);
+        } else if (user == null && tS.getNum_of_minutes() != 0) {
+
+        } else {
+            if (tS.getNum_of_minutes() == 0) {
+                usersWithTariff.remove(user.getMsisdn());
+            } else {
+                user.setTariff_id(tariff);
+                user.zeroAllMinutes();
+                usersWithTariff.put(user.getMsisdn(), user);
+            }
+        }
+
+
+        return new ResponseEntity<>(HttpStatus.OK);
+    }
+
+    private ResponseEntity<String> payDay(String param) {
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             JsonNode jsonNode = objectMapper.readTree(param);
             long msisdn = jsonNode.get("msisdn").asLong();
-            String tariff = jsonNode.get("tariffId").asText();
+            String tariff = jsonNode.get("tariff_d").asText();
 
             UserMinutes tempUser = checkUserContainment(msisdn, tariff);
             tempUser.zeroAllMinutes();
             userMinutesService.saveUserMinutes(tempUser);
 
-            double price = tariffStats.get(tempUser.getTariff_id()).getPrice_of_period();
+            double price = round(tariffStats.get(tempUser.getTariff_id()).getPrice_of_period(), 1);
 
-            HrsCallbackRecord hrsCallbackRecord = new HrsCallbackRecord(tempUser.getMsisdn(), price);
-            return hrsCallbackRecord.toJson();
+            return new ResponseEntity<>(prepareJson(tempUser.getMsisdn(), price), HttpStatus.OK);
 
         } catch (IOException e) {
-            e.printStackTrace();
+            return new ResponseEntity<>(INCORRECT_DATA, HttpStatus.BAD_REQUEST);
         }
-        return param;
     }
 
-    /**
-     * Распределение звонков по типу "Есть минуты на тарифе или нет"
-     * @param message Информация о звонке
-     * @return Номер и стоимость
-     */
-    private String tariffDispatch(String message) {
-        HrsTransaction record = new HrsTransaction(message);
-        if (tariffStats.get(record.getTariffId()).getPrice_of_period() == 0) {
-            return noMinutesTariff(record, record.getTariffId());
+    private ResponseEntity<String> tariffDispatch(String message) {
+        HrsTransaction record;
+        try {
+            record = new HrsTransaction(message);
+        } catch (Exception e) {
+            return new ResponseEntity<>(INCORRECT_DATA, HttpStatus.BAD_REQUEST);
         }
-        return withMinutesTariff(record);
+        if (tariffStats.get(record.getTariffId()).getNum_of_minutes() == 0) {
+            String response = noMinutesTariff(record, record.getTariffId());
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        }
+        String response = withMinutesTariff(record);
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
-    /**
-     * Обработки тарифов без количества месячных минут
-     * @param record Информация о звонке
-     * @param tariff Тариф абонента. Это может быть как тариф абонента, так и альтернативный тариф "без минут"
-     * @return Номер и стоимость
-     */
     private String noMinutesTariff(HrsTransaction record, String tariff) {
-        double timeSpent = Math.ceil(record.countCallLength() / 60);
+        double timeSpent = Math.ceil(record.getCallLength() / 60);
 
         TariffStats tStats = tariffStats.get(tariff);
         double price;
@@ -128,19 +167,12 @@ public class HrsHandler {
                 price = tStats.getPrice_outcoming_calls();
             }
         }
-        double sum = timeSpent * price;
-
-        HrsCallbackRecord hrsCallbackRecord = new HrsCallbackRecord(record.getMsisdn(), sum);
-        return hrsCallbackRecord.toJson();
+        double sum = round(timeSpent * price, 1);
+        return prepareJson(record.getMsisdn(), sum);
     }
 
-    /**
-     * Обработки тарифов с количеством месячных минут
-     * @param record Информация о звонке
-     * @return Номер и стоимость
-     */
     private String withMinutesTariff(HrsTransaction record) {
-        double timeSpent = Math.ceil(record.countCallLength() / 60);
+        double timeSpent = Math.ceil(record.getCallLength() / 60);
 
         TariffStats tStats = tariffStats.get(record.getTariffId());
 
@@ -150,7 +182,7 @@ public class HrsHandler {
 
         if (userMinutes.getUsed_minutes_in() + timeSpent <= tStats.getNum_of_minutes()) {
             userMinutes.increaseMinutes((int) timeSpent);
-            returnVal = new HrsCallbackRecord(record.getMsisdn(), 0).toJson();
+            returnVal = prepareJson(record.getMsisdn(), 0);
         } else {
             userMinutes.setAllMinutes(tStats.getNum_of_minutes());
             returnVal = noMinutesTariff(record, TARIFF_BY_DEFAULT);
@@ -160,39 +192,31 @@ public class HrsHandler {
         return returnVal;
     }
 
-    /**
-     * Проверка на включение абонента в кеш
-     * @param msisdn Номер телефона
-     * @param tariff Тариф абонента
-     * @return
-     */
     private UserMinutes checkUserContainment(long msisdn, String tariff) {
-        if (!usersWithTariff.containsKey(msisdn)) {
-            UserMinutes temp = new UserMinutes(msisdn, tariff, ZERO, ZERO);
-            usersWithTariff.put(temp.getMsisdn(), temp);
-            return temp;
-        } else {
+        if (usersWithTariff.containsKey(msisdn)) {
             return usersWithTariff.get(msisdn);
+        } else {
+            UserMinutes temp = userMinutesService.getUser(msisdn);
+            if (temp != null) {
+                usersWithTariff.put(temp.getMsisdn(), temp);
+            } else if (temp == null && tariffStats.get(tariff).getNum_of_minutes() != 0) {
+                temp = new UserMinutes(msisdn, tariff, ZERO, ZERO);
+                usersWithTariff.put(temp.getMsisdn(), temp);
+            } else {
+                return null;
+            }
+            return temp;
         }
     }
 
-    /**
-     * Извлечение всех тарифов из базы данных BRT
-     * @return Мапу слабых связей со всеми тарифами (так надо чтобы GC не удалил ничего)
-     */
-    private WeakHashMap<String, TariffStats> uploadTariff() {
-        WeakHashMap<String, TariffStats> tS = new WeakHashMap();
+    private  Map<String, TariffStats> uploadTariff() {
+        Map<String, TariffStats> tS = new HashMap<>();
         for (TariffStats elem : tariffStatsService.getAllTariffStats()) {
             tS.put(elem.getTariff_id(), elem);
         }
         return tS;
     }
 
-    /**
-     * Декодирование информации из URL запроса
-     * @param encodedString Декодируемая строка
-     * @return Декодированная строка
-     */
     private static String decodeParam(String encodedString) {
         String decodedString = "";
         try {
@@ -201,5 +225,26 @@ public class HrsHandler {
             e.printStackTrace();
         }
         return decodedString;
+    }
+
+    private static String prepareJson(long msisdn, double price) {
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put("msisdn", msisdn);
+        jsonObject.put("money", price);
+        return jsonObject.toString();
+    }
+
+    public static double round(double value, int places) {
+        long factor = (long) Math.pow(10, places);
+        value = value * factor;
+        long tmp = Math.round(value);
+        return (double) tmp / factor;
+    }
+
+    private static boolean checkSignature(String head) {
+        if (head != null) {
+            return head.equals(BRT_SIGNATURE);
+        }
+        return false;
     }
 }

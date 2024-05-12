@@ -16,4 +16,8 @@ public class UserMinutesService {
     public void saveUserMinutes(UserMinutes userMinutes) {
         userMinutesRepository.save(userMinutes);
     }
+
+    public UserMinutes getUser(long msisdn) {
+        return userMinutesRepository.findById(msisdn).orElse(null);
+    }
 }

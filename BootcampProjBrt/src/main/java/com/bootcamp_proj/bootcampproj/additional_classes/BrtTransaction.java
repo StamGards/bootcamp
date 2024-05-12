@@ -1,12 +1,7 @@
 package com.bootcamp_proj.bootcampproj.additional_classes;
-import com.bootcamp_proj.bootcampproj.psql_transactions.Transaction;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.io.IOException;
-import java.lang.reflect.Array;
+import org.json.JSONObject;
+import com.bootcamp_proj.bootcampproj.psql_transactions.Transaction;
 
 /**
  * Наследник класс для обработки записей из CDR файла. Расширен полями и методами,
@@ -14,7 +9,6 @@ import java.lang.reflect.Array;
  */
 public class BrtTransaction extends Transaction {
     private static final String REGEX = ", ";
-
     protected String tariffId;
     protected boolean inNet;
 
@@ -58,16 +52,13 @@ public class BrtTransaction extends Transaction {
     }
 
     public String toJson() {
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            return mapper.writeValueAsString(this);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return null;
-        }
-    }
-
-    public double countCallLength() {
-        return unixEnd - unixStart;
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put("call_id", callId);
+        jsonObject.put("msisdn", msisdn);
+        jsonObject.put("is_msisdn_to_camomile_client", inNet);
+        jsonObject.put("unix_start", unixStart);
+        jsonObject.put("unix_end", unixEnd);
+        jsonObject.put("tariff_id", tariffId);
+        return jsonObject.toString();
     }
 }

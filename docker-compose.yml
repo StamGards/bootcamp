@@ -1,26 +1,48 @@
 version: '3'
 services:
-  db:
+  db_brt:
     image: postgres
-    container_name: postgres-server
+    container_name: postgres_brt
     shm_size: 128mb
     environment:
-      POSTGRES_DB: bootcamp_db
       POSTGRES_USER: dvpsqluser
-      POSTGRES_PASSWORD: dvpsql 
+      POSTGRES_PASSWORD: dvpsql
+      POSTGRES_DB: brt_data
     expose:
-      - "5434"
+      - "5437"
     ports:
-      - "5434:5434"
-    command: -p 5434
+      - "5437:5437"
+    command: -p 5437
     volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-    restart: always
+      - ./init_brt.sql:/docker-entrypoint-initdb.d/init.sql
+      - /private/var/lib/db_cdr:/var/lib/postgresql
+    restart: unless-stopped
+    networks:
+      - db_net
+      - db_net_admin
+  db_cdr:
+    image: postgres
+    container_name: postgres_cdr
+    shm_size: 128mb
+    environment:
+      POSTGRES_USER: dvpsqluser
+      POSTGRES_PASSWORD: dvpsql
+      POSTGRES_DB: cdr_data
+    expose:
+      - "5438"
+    ports:
+      - "5438:5438"
+    command: -p 5438
+    volumes:
+      - ./init_cdr.sql:/docker-entrypoint-initdb.d/init.sql
+      - /private/var/lib/db_brt:/var/lib/postgresql
+    restart: unless-stopped
     networks:
       - db_net
       - db_net_admin
   adminer:
     image: adminer
+    container_name: adminer
     restart: unless-stopped
     ports:
       - 5454:5454
@@ -35,6 +57,7 @@ services:
     networks:
       - kafka_net
   kafka1:
+    container_name: kafka_bro_1
     image: wurstmeister/kafka:latest
     ports:
       - "9092:9092"
@@ -56,6 +79,7 @@ services:
       - service_net
       - kafka_net
   kafka2:
+    container_name: kafka_bro_2
     image: wurstmeister/kafka:latest
     ports:
       - "9094:9094"
@@ -77,6 +101,7 @@ services:
       - service_net
       - kafka_net
   hrs1:
+    container_name: hrs_clone_1
     build:
       context: ./BootcampProjHrs/
       dockerfile: ./dockerfile
@@ -87,6 +112,7 @@ services:
       - "9997:8082"
     restart: unless-stopped
   hrs2:
+    container_name: hrs_clone_2
     build:
       context: ./BootcampProjHrs/
       dockerfile: ./dockerfile
@@ -97,6 +123,7 @@ services:
       - "9998:8082"
     restart: unless-stopped
   nginx_hrs:
+    container_name: nginx_hrs
     image: nginx:latest
     restart: unless-stopped
     ports:
@@ -110,6 +137,7 @@ services:
     - db_net
     - service_net
   brt:
+    container_name: brt
     build:
       context: ./BootcampProjBrt/
       dockerfile: ./dockerfile
@@ -118,12 +146,14 @@ services:
       - service_net
       - kafka_net
     restart: unless-stopped
+    ports:
+      - "8078:8078"
     depends_on:
       - nginx_hrs
       - nginx_crm
-      - kafka1
-      - kafka2
+      - db_brt
   cdr:
+    container_name: cdr
     build:
       context: ./BootcampProjCdrGen/
       dockerfile: ./dockerfile
@@ -133,7 +163,9 @@ services:
     restart: unless-stopped
     depends_on:
       - brt
+      - db_cdr
   crm1:
+    container_name: crm_clone_1
     build:
       context: ./BootcampProjCrm/
       dockerfile: ./dockerfile
@@ -143,6 +175,7 @@ services:
       - "9987:8079"
     restart: unless-stopped
   crm2:
+    container_name: crm_clone_2
     build:
       context: ./BootcampProjCrm/
       dockerfile: ./dockerfile
@@ -152,6 +185,7 @@ services:
       - "9988:8079"
     restart: unless-stopped
   nginx_crm:
+    container_name: nginx_crm
     image: nginx:latest
     restart: unless-stopped
     ports:
