@@ -11,6 +11,7 @@ import java.io.IOException;
 @ComponentScan(basePackages = {"com.bootcamp_proj"})
 public class BootcampProjApplication {
 	public static void main(String[] args) {
+		System.out.println("ProjBRT Started");
 		SpringApplication.run(BootcampProjApplication.class, args);
 
 		BrtHandler brt = BrtHandler.getInstance();

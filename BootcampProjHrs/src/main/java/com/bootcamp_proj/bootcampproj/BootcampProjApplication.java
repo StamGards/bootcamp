@@ -11,6 +11,7 @@ import java.io.IOException;
 public class BootcampProjApplication {
 
 	public static void main(String[] args) {
+		System.out.println("HRS started  with\n " + args);
 		SpringApplication.run(BootcampProjApplication.class, args);
 	}
 }

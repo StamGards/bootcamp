@@ -33,6 +33,11 @@ INSERT INTO cdr_abonents (msisdn) VALUES(74374224157);
 INSERT INTO cdr_abonents (msisdn) VALUES(75326984736);
 INSERT INTO cdr_abonents (msisdn) VALUES(76168793160);
 INSERT INTO cdr_abonents (msisdn) VALUES(79298674093);
+INSERT INTO cdr_abonents (msisdn) VALUES(79112220001);
+INSERT INTO cdr_abonents (msisdn) VALUES(79112220002);
+INSERT INTO cdr_abonents (msisdn) VALUES(79112220003);
+INSERT INTO cdr_abonents (msisdn) VALUES(79112220004);
+INSERT INTO cdr_abonents (msisdn) VALUES(79112220005);
 
 CREATE TABLE tariffs (
                          tariff_id varchar NOT NULL,
@@ -84,3 +89,8 @@ INSERT INTO users (msisdn, tariff_id, money_balance) VALUES(74374224158, '12', 3
 INSERT INTO users (msisdn, tariff_id, money_balance) VALUES(75326984737, '12', 300);
 INSERT INTO users (msisdn, tariff_id, money_balance) VALUES(76168793161, '11', 50);
 INSERT INTO users (msisdn, tariff_id, money_balance) VALUES(79298674094, '11', 500);
+INSERT INTO users (msisdn, tariff_id, money_balance) VALUES(79112220001, '11', 100);
+INSERT INTO users (msisdn, tariff_id, money_balance) VALUES(79112220002, '12', 200);
+INSERT INTO users (msisdn, tariff_id, money_balance) VALUES(79112220003, '12', 200);
+INSERT INTO users (msisdn, tariff_id, money_balance) VALUES(79112220004, '11', 100);
+INSERT INTO users (msisdn, tariff_id, money_balance) VALUES(79112220005, '11', 200);

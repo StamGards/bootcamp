@@ -41,7 +41,7 @@ public class BrtHandler implements InitializingBean {
     private static final String BOOTCAMP_PROJ_GROUP = "bootcamp-proj-group";
     private static final String DATA_TOPIC = "data-topic";
     private static final String PART_ZERO = "0";
-    private static final String CDR_FILE = "./usr/local/temp/CDR.txt";
+    private static final String CDR_FILE = "./usr/local/temp/testCDR.txt";
     private static final String HOST = "http://nginx_hrs:";
     private static final String SINGLE_PAY_PARAM = "/api/hrs/single-pay?param=";
     private static final String MONTHLY_PAY_PARAM = "/api/hrs/monthly-pay?param=";

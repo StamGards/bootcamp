@@ -33,3 +33,8 @@ INSERT INTO cdr_abonents (msisdn) VALUES(74374224157);
 INSERT INTO cdr_abonents (msisdn) VALUES(75326984736);
 INSERT INTO cdr_abonents (msisdn) VALUES(76168793160);
 INSERT INTO cdr_abonents (msisdn) VALUES(79298674093);
+INSERT INTO cdr_abonents (msisdn) VALUES(79112220001);
+INSERT INTO cdr_abonents (msisdn) VALUES(79112220002);
+INSERT INTO cdr_abonents (msisdn) VALUES(79112220003);
+INSERT INTO cdr_abonents (msisdn) VALUES(79112220004);
+INSERT INTO cdr_abonents (msisdn) VALUES(79112220005);

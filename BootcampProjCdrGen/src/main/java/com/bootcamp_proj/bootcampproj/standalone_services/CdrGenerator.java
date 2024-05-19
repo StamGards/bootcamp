@@ -36,7 +36,7 @@ public class CdrGenerator implements InitializingBean {
     private static final double CALL_CHANCE = 0.7;
     private static final double CRM_CHANCE = 0.07;
     private static final double CALL_CHANCE_EQUATOR = 1 - (1 - CALL_CHANCE) / 2;
-    private static final String TEMP_CDR_TXT = "./usr/local/temp/CDR.txt";
+    private static final String TEMP_CDR_TXT = "./usr/local/temp/testCDR.txt";
     private static final String CDR_ABONENTS_TXT = "./usr/local/temp/CrmAbonents.txt";
     private static final String DATA_TOPIC = "data-topic";
     private static final int PART_ZERO_INT = 0;

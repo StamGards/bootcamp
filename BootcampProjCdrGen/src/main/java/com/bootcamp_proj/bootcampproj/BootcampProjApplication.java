@@ -12,8 +12,10 @@ import java.io.IOException;
 public class BootcampProjApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(BootcampProjApplication.class, args);
 
 		System.out.println("start");
+		SpringApplication.run(BootcampProjApplication.class, args);
+
+		System.out.println("CDR gen complited");
 	}
 }

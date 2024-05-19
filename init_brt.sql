@@ -48,3 +48,8 @@
     INSERT INTO users (msisdn, tariff_id, money_balance) VALUES(75326984737, '12', 300);
     INSERT INTO users (msisdn, tariff_id, money_balance) VALUES(76168793161, '11', 50);
     INSERT INTO users (msisdn, tariff_id, money_balance) VALUES(79298674094, '11', 500);
+    INSERT INTO users (msisdn, tariff_id, money_balance) VALUES(79112220001, '11', 100);
+    INSERT INTO users (msisdn, tariff_id, money_balance) VALUES(79112220002, '12', 200);
+    INSERT INTO users (msisdn, tariff_id, money_balance) VALUES(79112220003, '12', 200);
+    INSERT INTO users (msisdn, tariff_id, money_balance) VALUES(79112220004, '11', 100);
+    INSERT INTO users (msisdn, tariff_id, money_balance) VALUES(79112220005, '11', 200);
